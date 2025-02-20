@@ -34,23 +34,32 @@
 #![expect(clippy::single_call_fn, reason = "style")]
 
 mod email;
+use clap::Parser;
 use email::send;
 
 /// Arguments required to send an email
+#[derive(Parser)]
 struct MailArguments {
     /// Email's body
+    #[arg(short, long)]
     body: Option<String>,
     /// Email of the sender
+    #[arg(short, long)]
     from: String,
     /// Name of the sender
+    #[arg(short, long)]
     name: Option<String>,
     /// Password
+    #[arg(short, long)]
     password: String,
     /// Email's subject
+    #[arg(short, long)]
     subject: Option<String>,
     /// Lists of recipients
+    #[arg(short, long, required = true, num_args = 1..)]
     to: Vec<String>,
     /// Enable logging
+    #[arg(short, long)]
     verbose: bool,
 }
 
@@ -58,22 +67,12 @@ struct MailArguments {
 #[expect(clippy::print_stderr, reason = "logging for debugging")]
 fn log_eprint(msg: &str, verbose: bool) {
     if verbose {
-        eprintln!("{msg}");
+        eprint!("{msg}...{}\r", " ".repeat(10));
     }
 }
 
-fn main() -> Result<(), ()> {
-    let args = MailArguments {
-        name: None,
-        from: "example@example.com".into(),
-        to: vec!["example@example.com".into()],
-        password: "some_password".into(),
-        subject: None,
-        body: None,
-        verbose: true,
-    };
+fn main() -> Result<(), String> {
+    let args = MailArguments::parse();
     let verbose = args.verbose;
-    send(args).map_err(|err| {
-        log_eprint(&format!("\n{err}"), verbose);
-    })
+    send(args).map_err(|err| if verbose { err } else { String::new() })
 }

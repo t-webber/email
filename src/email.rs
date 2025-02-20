@@ -71,7 +71,7 @@ fn is_valid_email(email: &str) -> Result<(), String> {
 
 /// Main function to send the function
 pub fn send(mail_params: MailArguments) -> Result<(), String> {
-    log_eprint("Checking emails...     \r", mail_params.verbose);
+    log_eprint("Checking emails", mail_params.verbose);
 
     is_valid_email(&mail_params.from)?;
 
@@ -79,7 +79,7 @@ pub fn send(mail_params: MailArguments) -> Result<(), String> {
         is_valid_email(email)?;
     }
 
-    log_eprint("Building email...     \r", mail_params.verbose);
+    log_eprint("Building email", mail_params.verbose);
 
     let email = build_email(
         mail_params.name,
@@ -90,7 +90,7 @@ pub fn send(mail_params: MailArguments) -> Result<(), String> {
     )?;
     let mailer = build_mailer(mail_params.from, mail_params.password)?;
 
-    log_eprint("Sending email...      \r", mail_params.verbose);
+    log_eprint("Sending email", mail_params.verbose);
 
     let response = mailer
         .send(&email)
