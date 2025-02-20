@@ -2,6 +2,12 @@
 name = "email"
 version = "0.1.0"
 edition = "2021"
+description = "CLI to send emails from terminal"
+keywords = ["email", "smtp", "cli"]
+license-file = "LICENSE"
+repository = "https://github.com/t-webber/email"
+readme = "README.md"
+categories = ["cli"]
 
 [dependencies]
 lettre = "0.11.13"

@@ -24,6 +24,7 @@
     clippy::nursery,
     clippy::cargo
 )]
+#![expect(clippy::multiple_crate_versions, reason = "used crates need this")]
 #![expect(clippy::blanket_clippy_restriction_lints, reason = "warn all lints")]
 #![expect(
     clippy::implicit_return,
@@ -49,10 +50,19 @@ struct MailArguments {
     subject: Option<String>,
     /// Lists of recipients
     to: Vec<String>,
+    /// Enable logging
+    verbose: bool,
 }
 
+/// Conditional logging for debugging
 #[expect(clippy::print_stderr, reason = "logging for debugging")]
-fn main() {
+fn log_eprint(msg: &str, verbose: bool) {
+    if verbose {
+        eprintln!("{msg}");
+    }
+}
+
+fn main() -> Result<(), ()> {
     let args = MailArguments {
         name: None,
         from: "example@example.com".into(),
@@ -60,17 +70,10 @@ fn main() {
         password: "some_password".into(),
         subject: None,
         body: None,
+        verbose: true,
     };
-    match send(args) {
-        Ok(rep) if rep.is_positive() => {
-            eprintln!("Email sent. Server returned code {}.", rep.code(),);
-        }
-        Ok(rep) => {
-            eprintln!(
-                "Unknown error. The email may have been sent. Server returned code {}.",
-                rep.code(),
-            );
-        }
-        Err(msg) => eprintln!("\n{msg}"),
-    }
+    let verbose = args.verbose;
+    send(args).map_err(|err| {
+        log_eprint(&format!("\n{err}"), verbose);
+    })
 }
