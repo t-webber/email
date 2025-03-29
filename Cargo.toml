@@ -8,8 +8,9 @@ license-file = "LICENSE"
 repository = "https://github.com/t-webber/email"
 readme = "README.md"
 categories = ["cli"]
+authors = ["Tom Webber"]
 
 [dependencies]
-clap = { version = "4.5.30", features = ["derive"] }
+clap = { version = "4.5.34", features = ["derive"] }
 dirs = "6.0.0"
-lettre = "0.11.13"
+lettre = { version = "0.11.15" }

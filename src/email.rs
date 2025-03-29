@@ -36,7 +36,7 @@ fn build_email(
             .map_err(|err| format!("Invalid to: {err}"))?);
     }
 
-    let body_part = SinglePart::html(body.cloned().unwrap_or_default());
+    let body_part = SinglePart::plain(body.cloned().unwrap_or_default());
 
     email_msg
         .subject(subject.cloned().unwrap_or_default())

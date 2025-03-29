@@ -36,9 +36,12 @@
 
 mod email;
 use clap::Parser;
-use core::fmt::Write as _;
 use email::send;
+use std::fs::OpenOptions;
+use std::io::{self, Write as _};
+use std::process::Command;
 use std::{
+    env,
     fs::{self, create_dir_all, read_to_string},
     path::PathBuf,
 };
@@ -52,6 +55,9 @@ macro_rules! make_parser_args {
             /// Email's body
             #[arg(short, long)]
             body: Option<String>,
+            /// Do not open the editor if the body or subject of the email were not specified
+            #[arg(long)]
+            bypass_editor: bool,
             /// Email of the sender
             #[arg(short, long)]
             from: $type,
@@ -83,6 +89,59 @@ make_parser_args!(MailArguments, String);
 make_parser_args!(OptionalMailArguments, Option<String>);
 
 impl MailArguments {
+    /// Opens an editor if the subject or the body of the email wasn't specified
+    fn ensure_body(&mut self) -> Result<(), String> {
+        #[expect(clippy::needless_pass_by_value, reason = "avoid redundant closures")]
+        fn tmp_error(error: io::Error) -> String {
+            format!("Failed to open tmp file. Please provide email subject and body through CLI arguments, or use --bypass-editor to provide empty ones.\nError information: {error}")
+        }
+
+        if (self.body.is_none() || self.subject.is_none()) && !self.bypass_editor {
+            let tmp_path = get_cache_path("tmp")?;
+            let mut tmp = OpenOptions::new()
+                .create(true)
+                .read(true)
+                .write(true)
+                .truncate(true)
+                .open(&tmp_path)
+                .map_err(tmp_error)?;
+            let subject = self.subject.take().unwrap_or_default();
+            let body = self.body.take().unwrap_or_default();
+            writeln!(
+                tmp,
+                "# Subject (/!\\ the subject must fit on one line /!\\)
+
+{subject}
+
+# Body
+
+{body}
+"
+            )
+            .map_err(tmp_error)?;
+            Command::new(env::var("EDITOR").unwrap_or_else(|_| "vim".to_owned()))
+                .arg(&tmp_path)
+                .spawn()
+                .and_then(|mut cmd| cmd.wait())
+                .map_err(tmp_error)?;
+            let tmp_content = read_to_string(&tmp_path).map_err(tmp_error)?;
+
+            let mut lines = tmp_content
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.starts_with('#'));
+
+            for line in lines.by_ref() {
+                if !line.is_empty() {
+                    self.subject = Some(line.to_owned());
+                    break;
+                }
+            }
+            self.body = Some(lines.collect::<Vec<&str>>().join("\n"));
+        }
+        Ok(())
+    }
+
     /// Parses the CLI input depending on whether credentials were stored in the past
     fn new(path_res: &Result<PathBuf, String>) -> Self {
         if let Ok(path) = path_res {
@@ -103,6 +162,7 @@ impl MailArguments {
         let args = OptionalMailArguments::parse();
         Self {
             body: args.body,
+            bypass_editor: args.bypass_editor,
             from: args.from.unwrap_or_else(|| stored_from.to_owned()),
             name: args.name,
             password: args.password.unwrap_or_else(|| stored_password.to_owned()),
@@ -115,61 +175,50 @@ impl MailArguments {
 }
 
 /// Returns the path where the credentials are stored
-fn get_credentials_path() -> Result<PathBuf, String> {
+fn get_cache_path(path: &str) -> Result<PathBuf, String> {
     let cache_path = dirs::cache_dir()
         .ok_or_else(|| "Failed to get cache directory.".to_owned())?
         .join("email-rs");
     create_dir_all(&cache_path)
         .map_err(|err| format!("Failed to create cache directory: {err:?}."))?;
-    Ok(cache_path.join("data"))
+    Ok(cache_path.join(path))
 }
 
 /// Sends the email with the given arguments, and stores the credentials if wanted by the user.
-fn email(path: Result<PathBuf, String>, args: &MailArguments) -> Result<(), String> {
-    send(args)?;
-    if args.store {
-        fs::write(path?, format!("{}\n{}", args.from, args.password))
-            .map_err(|err| format!("Failed to store credentials: {err:?}"))
-    } else {
-        Ok(())
+fn email() -> Result<(), String> {
+    let path = get_cache_path("data");
+    let mut args = MailArguments::new(&path);
+    args.ensure_body()?;
+    {
+        send(&args)?;
+        if args.store {
+            fs::write(path?, format!("{}\n{}", args.from, args.password))
+                .map_err(|err| format!("Failed to store credentials: {err:?}"))
+        } else if args.verbose {
+            path.map(|_| ())
+        } else {
+            Ok(())
+        }
+    }.map_err(|err| {
+        if args.verbose {
+            format!("An error occurred, email not sent. Check your credentials, the destination email and that you are connected to the internet.\n\nError details: {err}")
+        } else {
+
+                "Email not sent. Use --verbose flag for more information."
+            .to_owned()
+        }})?;
+
+    #[expect(clippy::print_stdout, reason = "clean verbose logs")]
+    if args.verbose {
+        println!("Email sent          ");
     }
+    Ok(())
 }
 
-//"/home/bob/.cache/email-rs/data"
-
 fn main() -> Result<(), ()> {
-    let mut result = String::new();
-    let path = get_credentials_path();
-    let args = MailArguments::new(&path);
-    if args.verbose {
-        if let Err(err) = &path {
-            writeln!(result, "Failed to access stored credentials: {err}").unwrap();
-        }
-    }
-    let res = email(path, &args);
-    if let Err(err) = res {
-        if args.verbose {
-            writeln!(result, "An error occurred, email not sent. Check your credentials, the destination email and that you are connected to the internet.\n\nError details: {err}").unwrap();
-        } else {
-            writeln!(
-                result,
-                "Email not sent. Use --verbose flag for more information."
-            )
-            .unwrap();
-        }
-    }
     #[expect(
         clippy::print_stderr,
         reason = "inform user of failure in a pretty way"
     )]
-    if result.is_empty() {
-        #[expect(clippy::print_stdout, reason = "clean verbose logs")]
-        if args.verbose {
-            println!("Email sent          ");
-        }
-        Ok(())
-    } else {
-        eprintln!("{result}");
-        Err(())
-    }
+    email().map_err(|err| eprintln!("{err}"))
 }
