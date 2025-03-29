@@ -1,0 +1,53 @@
+name: "Rust"
+
+on:
+    pull_request:
+        branches:
+            - "*"
+    push:
+        branches:
+            - "*"
+
+env:
+    CARGO_TERM_COLOR: always
+    RUST_BACKTRACE: 1
+    RUSTDOCFLAGS: -D warnings
+
+jobs:
+    clippy:
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+            - name: Cargo clippy
+              run: cargo clippy --all -- --verbose -D warnings
+
+    build:
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+            - name: Cargo build
+              run: cargo build --release --verbose
+
+    fmt:
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+            - name: Add rustfmt
+              run: rustup +nightly component add rustfmt
+            - name: Cargo fmt
+              run: cargo +nightly fmt --all -- --unstable-features --error-on-unformatted
+
+    doc:
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+            - name: Cargo doc
+              run: cargo doc --document-private-items --all --verbose --release --no-deps
